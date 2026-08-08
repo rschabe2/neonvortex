@@ -156,7 +156,7 @@
   <div id="hud">
     <div class="topbar">
       <div class="panel">SCORE <span id="score">000000</span></div>
-      <div class="panel">LEVEL <span id="level">1</span></div>
+      <div class="panel">LEVEL <span id="level">1</span> · <span id="shapeName">ELLIPSE</span></div>
       <div class="panel">LIVES <span id="lives">3</span></div>
     </div>
     <div class="bottombar">
@@ -192,6 +192,7 @@
   const ctx = canvas.getContext('2d');
   const scoreEl = document.getElementById('score');
   const levelEl = document.getElementById('level');
+  const shapeNameEl = document.getElementById('shapeName');
   const livesEl = document.getElementById('lives');
   const centerMessage = document.getElementById('centerMessage');
   const startButton = document.getElementById('startButton');
@@ -338,6 +339,19 @@
     state.score += 1000 * state.level;
     state.flash = 1;
     updateHUD();
+
+    // Briefly identify the new tunnel geometry.
+    titleEl.textContent = `LEVEL ${state.level}`;
+    subtitleEl.innerHTML = `${tunnelShapeName()} TUNNEL`;
+    startButton.classList.add('hidden');
+    centerMessage.classList.remove('hidden');
+    setTimeout(()=>{
+      if(state.running && !state.gameOver){
+        centerMessage.classList.add('hidden');
+        startButton.classList.remove('hidden');
+      }
+    }, 1100);
+
     tone(330,.12,'sine',.05,550);
     setTimeout(()=>tone(660,.14,'sine',.04,330),90);
   }
@@ -356,6 +370,7 @@
   function updateHUD(){
     scoreEl.textContent = String(Math.max(0,Math.floor(state.score))).padStart(6,'0');
     levelEl.textContent = state.level;
+    shapeNameEl.textContent = tunnelShapeName();
     livesEl.textContent = state.lives;
   }
 
@@ -363,15 +378,80 @@
     return (lane / LANES) * TAU - Math.PI/2 + state.tunnelSpin;
   }
 
+  function tunnelShapeMultiplier(a){
+    const mode = (state.level - 1) % 8;
+
+    // Each level uses a different tunnel silhouette.
+    // The returned multiplier changes the radius at each angle.
+    if(mode === 0){
+      // Elliptical / classic ring
+      return 1;
+    }
+    if(mode === 1){
+      // Diamond
+      return 0.82 / Math.max(0.58, Math.abs(Math.cos(a)) + Math.abs(Math.sin(a)));
+    }
+    if(mode === 2){
+      // Four-point energy star
+      return 0.88 + 0.18 * Math.cos(a * 4);
+    }
+    if(mode === 3){
+      // Rounded square
+      const c = Math.abs(Math.cos(a));
+      const s = Math.abs(Math.sin(a));
+      return 0.84 / Math.pow(Math.pow(c,4) + Math.pow(s,4), 0.25);
+    }
+    if(mode === 4){
+      // Three-lobed reactor
+      return 0.9 + 0.16 * Math.cos(a * 3);
+    }
+    if(mode === 5){
+      // Six-sided pulse tunnel
+      return 0.92 + 0.11 * Math.cos(a * 6);
+    }
+    if(mode === 6){
+      // Five-point vortex
+      return 0.9 + 0.17 * Math.cos(a * 5);
+    }
+
+    // Wavy asymmetric tunnel
+    return 0.92 + 0.11 * Math.sin(a * 2 + 0.7) + 0.07 * Math.cos(a * 5);
+  }
+
+  function tunnelShapeName(){
+    const names = [
+      'ELLIPSE',
+      'DIAMOND',
+      'ENERGY STAR',
+      'ROUNDED SQUARE',
+      'TRI-LOBE',
+      'HEX PULSE',
+      'FIVE-POINT VORTEX',
+      'WAVE FIELD'
+    ];
+    return names[(state.level - 1) % names.length];
+  }
+
   function project(lane, depth){
     const t = Math.max(0,Math.min(1,depth));
     const a = laneAngle(lane);
     const near = outerR;
     const far = outerR*.09;
-    const r = far + (near-far) * Math.pow(t, .82);
+    const baseR = far + (near-far) * Math.pow(t, .82);
+
+    // Shape influence increases toward the player's rim and compresses
+    // toward the center so every tunnel still converges cleanly.
+    const shapeMix = Math.pow(t, .72);
+    const mult = 1 + (tunnelShapeMultiplier(a) - 1) * shapeMix;
+    const r = baseR * mult;
+
+    // Some shapes vary vertical compression slightly by level.
+    const squashModes = [.78,.84,.76,.80,.82,.77,.81,.75];
+    const ySquash = squashModes[(state.level - 1) % squashModes.length];
+
     return {
       x:cx + Math.cos(a)*r,
-      y:cy + Math.sin(a)*r*.78,
+      y:cy + Math.sin(a)*r*ySquash,
       r,
       a
     };
